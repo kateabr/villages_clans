@@ -90,7 +90,7 @@ data$ClanB <- factor(data$ClanB, levels=levels(data$ClanA))
 data$VillageA <- factor(data$VillageA, levels=levels(data$VillageB))
 
 data$VillageA %>%
-  unique() -> villages # список всех деревень из пар людей из одного клана
+  unique() -> villages # список всех деревень
 villages <- villages[villages != ""]
 
 for (village in villages){
@@ -132,4 +132,11 @@ for (village in villages){
   break()
 }
 
-hist(res.diff.median$Flat)
+hist(res.same.median$Loiselle - res.diff.median$Loiselle)
+
+shuffled_diff <- ifelse(is.na((x = median(res.same.median$Loiselle))[1]), 0, x) - median(res.diff.median$Loiselle)
+
+observed_diff <- ifelse(is.na((x = median(this_village[this_village$ClanA == this_village$ClanB, ]$Loiselle))[1]), 0, x) -
+  median(this_village[this_village$ClanA != this_village$ClanB, ]$Loiselle)
+abline(v=observed_diff, col="green", lwd=2)
+abline(v=shuffled_diff, col="red", lwd=2) 
