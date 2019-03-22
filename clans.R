@@ -2,9 +2,10 @@
 
 #library(tidyverse)
 library(GGally)
-library(dplyr)
 library(matrixStats)
 library(permute)
+#library(tidyverse)
+library(dplyr)
 
 # - - - функции - - -
 
@@ -28,55 +29,25 @@ make_dist_df <- function(cols = 4, rows = 0)
   return(res)
 }
 
-# на случай, если возникает пустая таблица
-# > вспомогательная функция
-# targ: таблица, которую необходимо проверить на непустоту
-# src: таблица, габариты которой получит targ, если targ окажется пустой
-# (если src тоже пустая, targ получит габариты 1х4)
-# return: targ или таблица, заполненная нулями, имеющая габариты src или 1х4
-pad <- function(targ, src){
-  if (nrow(targ) == 0){
-    len <- ifelse((len = nrow(src)) > 0, len, 1)
-    targ <- make_dist_df(rows = len)
-    for (i in seq(1, 4, 1)){
-      targ[, i] = rep(0, len)
-      }
-  }
-  return(targ)
-}
-
-# извлечение необходимых строк
-# > вспомогательная функция
-# tb: таблица
-# same_clan: TRUE (для пар вида одна деревня:один клан) / FALSE (одна деревня:разные кланы)
-# return: строки таблицы tb, удовлетворяющие условию same_clan
-get_sub_table <- function(tb, same_clan = TRUE){
-  tb[comp(same_clan)(tb$ClanA, tb$ClanB), ] %>%
-    select(Flat, Weighted, Loiselle, Ritland) %>% return()
-}
-
 # подсчет разности средних значений/медианы/среднеквадратического отклонения дистанций двух таблиц
 # dt1, dt2: таблицы
 # func: тип метрики (среднее значение/медиана/среднеквадратическое отклонение)
 # same_clan: TRUE (для пар вида одна деревня:один клан) / FALSE (одна деревня:разные кланы)
 # return: таблица 1x4 с разностью средних значений
-dist_diff <- function(dt1, dt2, func, same_clan = TRUE){
-  cols1 <- get_sub_table(dt1, same_clan)
-  cols2 <- get_sub_table(dt2, same_clan)
-  
-  cols1 <- as.matrix(pad(cols1, cols2))
-  cols2 <- as.matrix(pad(cols2, cols1))
-  
-  res <- as.data.frame(t(func(cols1) - func(cols2)))
-  colnames(res) <- c("Flat", "Weighted", "Loiselle", "Ritland")
+dist_diff <- function(dt, func){
+  res <- make_dist_df(rows = 1)
+  for (dist_t in c("Flat", "Weighted", "Loiselle", "Ritland")){
+    res[, dist_t] <- obs_diff(this_village.shuffled, dist_t, func)
+  }
   
   return(res)
 }
 
 # перемешивание столбца таблицы
 # data: исходная таблица
+# repeats: могут ли люди из разных кланов оказаться в одном клане в результате перемешивания (TRUE / FALSE)
 # return: таблица с перемешанными ярлыками кланов
-shuff <- function(data){
+shuff <- function(data, repeats = FALSE){
   data.shuffled.A <- data[FALSE, ]
   
   # получение из таблицы списка людей вместе с кланом, к которому они принадлежат
@@ -96,7 +67,7 @@ shuff <- function(data){
   
   # случайная замена ярлыков кланов
   clans_inds %>%
-    mutate(ClanShuffled = as.vector(clans_inds$Clan)[sample(1:nrow(clans_inds), nrow(clans_inds), replace = TRUE)]) -> clans_inds
+    mutate(ClanShuffled = as.vector(clans_inds$Clan)[sample(1:nrow(clans_inds), nrow(clans_inds), replace = repeats)]) -> clans_inds
   
   # обновление ярлыков для столбца ClanA
   for (individual in clans_inds$Ind) {
@@ -117,10 +88,74 @@ shuff <- function(data){
   return(data.shuffled.B)
 }
 
+# функция метрики по названию
+# > вспомогательная функция
+# mtr: тип метрики ("mean", "median", "sd")
+# return: функция mean, median, sd или ошибка
+metrics <- function(m){
+  if (m == "mean")
+    return(function(a) return(mean(a)))
+  else if (m == "median")
+    return(function(a) return(median(a)))
+  else if (m == "sd")
+    return(function(a) return(sd(a)))
+  else stop(sprintf("Неизвестная операция: %s", m))
+}
+
+# наблюдаемая разность
+# > вспомогательная функция
+# data: таблица со значениями (не перемешанная)
+# dist_type: тип расстояния ("Flat", "Weighted", "Loiselle", "Ritland")
+# mtr: тип метрики ("mean", "median", "sd")
+# return: разность между значениями метрики для строк с совпадающими и не совпадающими кланами
+obs_diff <- function(data, dist_type, mtr){
+  return(metrics(mtr)(data[data$ClanA != data$ClanB, ][, dist_type]) -
+           ifelse(is.na((x = metrics(mtr)(data[data$ClanA == data$ClanB, ][, dist_type]))[1]), 0, x))
+}
+
+# подсчет средних, генерация и сохранение гистограммы
+# vill: таблица до перемешивания
+# shuffled: значения метрик расстояний после перемешивания таблицы
+# village_name: название текущей деревни
+# dist_type: тип расстояния ("Flat", "Weighted", "Loiselle", "Ritland")
+# mtr: тип метрики ("mean", "median", "sd")
+# cnt: номер текущего изображения
+# wd: рабочий каталог, в который будут сохраняться изображения
+# return: -
+generate_hist <- function(vill, shuffled, village_name, dist_type, mtr, cnt, wd = "D:\\Desktop"){
+  setwd(wd)
+  
+  # наблюдаемое среднее
+  observed_diff <- obs_diff(vill, dist_type, mtr)
+  
+  # генерация и сохранение гистограммы
+  png(sprintf("%s_%s_%s_%i.png", village_name, dist_type, mtr, cnt))
+  
+  hist(shuffled[, dist_type], main = sprintf("Вид дистанции: %s; метрика: %s", dist_type, mtr))
+  
+  # генерация гистограммы
+  tryCatch(
+    {
+      # если определен доверительный интервал
+      abline(v = t.test(shuffled[, dist_type])$conf.int[1], col="blue", lwd=2)
+      abline(v = t.test(shuffled[, dist_type])$conf.int[2], col="blue", lwd=2)
+    },
+    # если доверительный интервал не определен
+    error = function(cond) {
+      print("Доверительный интервал не определен")
+    },
+    # добавление на гистограмму обозреваемого среднего и среднего по перемешанному множеству
+    finally = {
+      abline(v = observed_diff, col="green", lwd=2)
+      abline(v = mean(shuffled[, dist_type]), col="red", lwd=2)
+    })
+  
+  dev.off()
+}
+
 # - - - основной код - - -
-setwd("D:\\Desktop\\villages_clans")
+
 data <- read.csv("D:\\Desktop\\Human Y-STR - Dist-for_Yulik - Human Y-STR - Dist(1).csv")
-data <- as.tibble(data)
 
 data$ClanB <- factor(data$ClanB, levels=levels(data$ClanA))
 data$VillageA <- factor(data$VillageA, levels=levels(data$VillageB))
@@ -129,69 +164,39 @@ data$VillageA %>%
   unique() -> villages # список всех деревень
 villages <- villages[villages != ""]
 
-
-for(cnt in seq(1, 10)) {
+for(cnt in seq(1, 1)) {
   for (village in villages){
     data[data$VillageA == village, ]$ClanA %>%
       unique() %>% as.vector() -> clans # все кланы в деревне village
   
     this_village <- data[data$VillageA == village & data$VillageB == village, ] # все люди из деревни village
     
-    res.same.mean = make_dist_df()
-    res.diff.mean = make_dist_df()
-    res.same.median = make_dist_df()
-    res.diff.median = make_dist_df()
-    res.same.sd = make_dist_df()
-    res.diff.sd = make_dist_df()
+    res.mean = make_dist_df()
+    res.median = make_dist_df()
+    res.sd = make_dist_df()
     
-    shuffled_diff_mean <- c()
     
-    for (i in rep(0, 100)) {
-      this_village.shuffled <- shuff(this_village)
+    for (i in rep(0, 10)) {
+      this_village.shuffled <- shuff(this_village, repeats = FALSE)
       
       # mean
-      res.same.mean <- bind_rows(res.same.mean, head(dist_diff(this_village, this_village.shuffled,
-                                                               func = colMeans, same_clan = TRUE), 4))
-      res.diff.mean <- bind_rows(res.diff.mean, head(dist_diff(this_village, this_village.shuffled,
-                                                                func = colMeans, same_clan = FALSE), 4))
+      res.mean <- bind_rows(res.mean, head(dist_diff(this_village.shuffled,
+                                                          func = "mean"), 4))
   
       # median
-      # res.same.median <- bind_rows(res.same.median, head(dist_diff(this_village, this_village.shuffled,
-      #                                                          func = colMedians, same_clan = TRUE), 4))
-      # res.diff.median <- bind_rows(res.diff.median, head(dist_diff(this_village, this_village.shuffled,
-      #                                                          func = colMedians, same_clan = FALSE), 4))
-      # 
-      # # sd
-      # res.same.sd <- bind_rows(res.same.sd, head(dist_diff(this_village, this_village.shuffled,
-      #                                                              func = colSds, same_clan = TRUE), 4))
-      # res.diff.sd <- bind_rows(res.diff.sd, head(dist_diff(this_village, this_village.shuffled,
-      #                                                              func = colSds, same_clan = FALSE), 4))
+      res.median <- bind_rows(res.median, head(dist_diff(this_village.shuffled,
+                                                          func = "median"), 4))
       
-      shuffled_diff_mean <- c(shuffled_diff_mean, mean(res.diff.mean$Flat) - ifelse(is.na((x = mean(res.same.mean$Flat))[1]), 0, x))
+      # sd
+      res.sd <- bind_rows(res.sd, head(dist_diff(this_village.shuffled,
+                                                          func = "sd"), 4))
+      
     }
-    break()
+    
+    for(dist_t in c("Flat", "Weighted", "Loiselle", "Ritland")){
+      generate_hist(this_village, res.mean, village, dist_t, "mean", cnt, "D:\\Desktop\\villages_clans\\output")
+      generate_hist(this_village, res.median, village, dist_t, "median", cnt, "D:\\Desktop\\villages_clans\\output")
+      generate_hist(this_village, res.sd, village, dist_t, "sd", cnt, "D:\\Desktop\\villages_clans\\output")
+    }
   }
-  
-  observed_diff <- mean(this_village[this_village$ClanA != this_village$ClanB, ]$Flat) -
-    ifelse(is.na((x = mean(this_village[this_village$ClanA == this_village$ClanB, ]$Flat))[1]), 0, x)
-  xlims <- t.test(shuffled_diff_mean)$conf.int[1:2]
-  if(observed_diff < xlims[1]) {
-    xlims[1] <- observed_diff - 1
-  }
-  if(observed_diff > xlims[2]) {
-    xlims[2] <- observed_diff + 1
-  }
-  
-  png(sprintf("%s_flat_mean_%i.png", village, cnt))
-  
-  hist(shuffled_diff_mean, main = "Flat: Mean", xlim = xlims)
-  
-  abline(v=observed_diff, col="green", lwd=2)
-  
-  abline(v=mean(shuffled_diff_mean), col="red", lwd=2)
-  
-  abline(v=t.test(shuffled_diff_mean)$conf.int[1], col="blue", lwd=2)
-  abline(v=t.test(shuffled_diff_mean)$conf.int[2], col="blue", lwd=2)
-  
-  dev.off()
 }
