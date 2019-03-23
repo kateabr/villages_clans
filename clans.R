@@ -143,8 +143,8 @@ generate_hist <- function(vill, shuffled, village_name, dist_type, mtr, cnt){
     },
     # добавление на гистограмму обозреваемого среднего и среднего по перемешанному множеству
     finally = {
-      abline(v = observed_diff, col="green", lwd=2)
       abline(v = mean(shuffled[, dist_type]), col="red", lwd=2)
+      abline(v = observed_diff, col="green", lwd=2)
     })
   
   dev.off()
