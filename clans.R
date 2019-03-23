@@ -1,11 +1,10 @@
 # - - - библиотеки - - -
 
-#library(tidyverse)
-library(GGally)
-library(matrixStats)
-library(permute)
-#library(tidyverse)
 library(dplyr)
+
+# - - - рабочий каталог - - -
+
+setwd("D:\\Desktop\\villages_clans\\output")
 
 # - - - функции - - -
 
@@ -122,9 +121,7 @@ obs_diff <- function(data, dist_type, mtr){
 # cnt: номер текущего изображения
 # wd: рабочий каталог, в который будут сохраняться изображения
 # return: -
-generate_hist <- function(vill, shuffled, village_name, dist_type, mtr, cnt, wd = "D:\\Desktop"){
-  setwd(wd)
-  
+generate_hist <- function(vill, shuffled, village_name, dist_type, mtr, cnt){
   # наблюдаемое среднее
   observed_diff <- obs_diff(vill, dist_type, mtr)
   
@@ -194,9 +191,9 @@ for(cnt in seq(1, 1)) {
     }
     
     for(dist_t in c("Flat", "Weighted", "Loiselle", "Ritland")){
-      generate_hist(this_village, res.mean, village, dist_t, "mean", cnt, "D:\\Desktop\\villages_clans\\output")
-      generate_hist(this_village, res.median, village, dist_t, "median", cnt, "D:\\Desktop\\villages_clans\\output")
-      generate_hist(this_village, res.sd, village, dist_t, "sd", cnt, "D:\\Desktop\\villages_clans\\output")
+      generate_hist(this_village, res.mean, village, dist_t, "mean", cnt)
+      generate_hist(this_village, res.median, village, dist_t, "median", cnt)
+      generate_hist(this_village, res.sd, village, dist_t, "sd", cnt)
     }
   }
 }
